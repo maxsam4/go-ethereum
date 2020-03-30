@@ -549,7 +549,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 // associated faucet balance and nonce for connectivity caching.
 func (f *faucet) refresh(head *types.Header) error {
 	// Ensure a state update does not run for too long
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// If no header was specified, use the current chain head
@@ -610,7 +610,7 @@ func (f *faucet) loop() {
 			}
 			if err := f.refresh(head); err != nil {
 				log.Warn("Failed to update faucet state", "block", head.Number, "hash", head.Hash(), "err", err)
-				panic(err)
+				continue
 			}
 			// Faucet state retrieved, update locally and send to clients
 			f.lock.RLock()
