@@ -486,7 +486,8 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			fund    bool
 			timeout time.Time
 		)
-		if timeout = f.timeouts[id]; time.Now().After(timeout) {
+
+		if time.Now().After(f.timeouts[id]) && time.Now().After(f.timeouts[address.String()]) {
 			// User wasn't funded recently, create the funding transaction
 			amount := new(big.Int).Mul(big.NewInt(int64(*payoutFlag)), ether)
 			amount = new(big.Int).Mul(amount, new(big.Int).Exp(big.NewInt(5), big.NewInt(int64(msg.Tier)), nil))
@@ -521,6 +522,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			grace := timeout / 288 // 24h timeout => 5m grace
 
 			f.timeouts[id] = time.Now().Add(timeout - grace)
+			f.timeouts[address.String()] = time.Now().Add(timeout - grace)
 			fund = true
 		}
 		f.lock.Unlock()
@@ -888,7 +890,7 @@ func authNoAuth(url string) (string, string, common.Address, error) {
 // getGenesis returns a genesis based on input args
 func getGenesis(genesisFlag *string, goerliFlag bool, rinkebyFlag bool) (*core.Genesis, error) {
 	switch {
-	case genesisFlag != nil:
+	case *genesisFlag != "":
 		var genesis core.Genesis
 		err := common.LoadJSON(*genesisFlag, &genesis)
 		return &genesis, err
