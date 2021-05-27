@@ -582,8 +582,8 @@ func (f *faucet) refresh(head *types.Header) error {
 	for len(f.reqs) > 0 && f.reqs[0].Tx.Nonce() < f.nonce {
 		f.reqs = f.reqs[1:]
 	}
-	if len(f.reqs) > 25 {
-		log.Crit("Pending Queue has grown to over 25 elements")
+	if len(f.reqs) > 100 {
+		log.Crit("Pending Queue has grown to over 100 elements")
 	}
 	f.lock.Unlock()
 
