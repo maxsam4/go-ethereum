@@ -223,8 +223,9 @@ type faucet struct {
 // wsConn wraps a websocket connection with a write mutex as the underlying
 // websocket library does not synchronize access to the stream.
 type wsConn struct {
-	conn  *websocket.Conn
-	wlock sync.Mutex
+	conn        *websocket.Conn
+	wlock       sync.Mutex
+	updatesSent int
 }
 
 func newFaucet(genesis *core.Genesis, port int, enodes []*enode.Node, network uint64, stats string, ks *keystore.KeyStore, index []byte) (*faucet, error) {
@@ -624,6 +625,7 @@ func (f *faucet) loop() {
 			peers := f.stack.Server().PeerCount()
 
 			for _, conn := range f.conns {
+				conn.updatesSent++
 				if err := send(conn, map[string]interface{}{
 					"funds":    balance,
 					"funded":   f.nonce,
@@ -636,6 +638,10 @@ func (f *faucet) loop() {
 				}
 				if err := send(conn, head, time.Second); err != nil {
 					log.Warn("Failed to send header to client", "err", err)
+					conn.conn.Close()
+				}
+				if conn.updatesSent > 4 {
+					log.Info("Resetting a connection")
 					conn.conn.Close()
 				}
 			}
