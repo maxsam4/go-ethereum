@@ -473,6 +473,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("Something funky happened, please open an issue at https://github.com/ethereum/go-ethereum/issues")
 		}
 		if err != nil {
+			log.Info("Faucet request invalid", "err", err)
 			if err = sendError(wsconn, err); err != nil {
 				log.Warn("Failed to send prefix error to client", "err", err)
 				return
@@ -641,7 +642,6 @@ func (f *faucet) loop() {
 					conn.conn.Close()
 				}
 				if conn.updatesSent > 4 {
-					log.Info("Resetting a connection")
 					conn.conn.Close()
 				}
 			}
@@ -800,7 +800,7 @@ func authTwitterWithTokenV1(tweetID string, token string) (string, string, strin
 // success.
 func authTwitterWithTokenV2(tweetID string, token string) (string, string, string, common.Address, error) {
 	// Query the tweet details from Twitter
-	url := fmt.Sprintf("https://api.twitter.com/2/tweets/%s?expansions=author_id&user.fields=profile_image_url", tweetID)
+	url := fmt.Sprintf("https://api.twitter.com/2/tweets/%s?tweet.fields=created_at&expansions=author_id&user.fields=profile_image_url,created_at,public_metrics", tweetID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", "", "", common.Address{}, err
@@ -814,14 +814,19 @@ func authTwitterWithTokenV2(tweetID string, token string) (string, string, strin
 
 	var result struct {
 		Data struct {
-			AuthorID string `json:"author_id"`
-			Text     string `json:"text"`
+			AuthorID  string    `json:"author_id"`
+			Text      string    `json:"text"`
+			CreatedAt time.Time `json:"created_at"`
 		} `json:"data"`
 		Includes struct {
 			Users []struct {
-				ID       string `json:"id"`
-				Username string `json:"username"`
-				Avatar   string `json:"profile_image_url"`
+				Username  string    `json:"username"`
+				Avatar    string    `json:"profile_image_url"`
+				CreatedAt time.Time `json:"created_at"`
+				Metrics   struct {
+					Tweets    int `json:"tweet_count"`
+					Followers int `json:"followers_count"`
+				} `json:"public_metrics"`
 			} `json:"users"`
 		} `json:"includes"`
 	}
@@ -829,6 +834,22 @@ func authTwitterWithTokenV2(tweetID string, token string) (string, string, strin
 	err = json.NewDecoder(res.Body).Decode(&result)
 	if err != nil {
 		return "", "", "", common.Address{}, err
+	}
+
+	if time.Now().Sub(result.Data.CreatedAt).Seconds() < 10 {
+		return "", "", "", common.Address{}, errors.New("Tweet too new, please wait 15 seconds and then resubmit the same tweet here.")
+	}
+
+	if time.Now().Sub(result.Data.CreatedAt).Hours() > 24 {
+		return "", "", "", common.Address{}, errors.New("Tweet too old, please post a new tweet and use that.")
+	}
+
+	if time.Now().Sub(result.Includes.Users[0].CreatedAt).Hours() < 168 {
+		return "", "", "", common.Address{}, errors.New("Twitter account too new, You must use an established account that is at least 1 week old, has a few followers and, a few tweets.")
+	}
+
+	if time.Now().Sub(result.Includes.Users[0].CreatedAt).Hours() < 8760 && (result.Includes.Users[0].Metrics.Tweets < 5 || result.Includes.Users[0].Metrics.Followers < 5) {
+		return "", "", "", common.Address{}, errors.New("Twitter account too new, You must use an established account that is at least 1 week old, has a few followers and, a few tweets.")
 	}
 
 	address := common.HexToAddress(regexp.MustCompile("0x[0-9a-fA-F]{40}").FindString(result.Data.Text))
